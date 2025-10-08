@@ -1,9 +1,10 @@
 package com.example.cohart9cleaningapp
 
-import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -11,15 +12,16 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,10 +43,13 @@ import androidx.compose.ui.unit.sp
 import com.example.cohart9cleaningapp.ui.theme.Cohart9CleaningAppTheme
 import kotlinx.coroutines.delay
 import java.util.*
+import androidx.core.graphics.toColorInt
+import androidx.core.graphics.withSave
+import androidx.core.content.edit
 
 class MainActivity : ComponentActivity() {
 
-    // Updated student list
+    // List of all students in the cohort
     private val students = listOf(
         "Bailasan", "Christina", "Cyrus", "Harshpreet", "Isaish",
         "Janna", "Laura", "Linda", "Madison", "Marianne",
@@ -52,28 +57,61 @@ class MainActivity : ComponentActivity() {
         "Wesley", "Yunjia", "Ruby"
     )
 
+    // Cleaning areas labeled A through R
     private val areas = ('A'..'R').map { it.toString() }
 
-    // Calculate student's duty area for the day based on schedule
+    // Detailed descriptions for each cleaning area
+    private val areaDescriptions = mapOf(
+        "A" to "Clean Up Supervisor Front and Back Area. Dental Laboratory Classroom 332, 333 & 334",
+        "B" to "Porcelain Room",
+        "C" to "Acrylic Packing & Sink",
+        "D" to "Printing & Sink / Counter. Boil Out & Curing Tank",
+        "E" to "Trimmers & Sink",
+        "F" to "Mixer Counter",
+        "G" to "Mixer Counter",
+        "H" to "Trimmers & Sink",
+        "I" to "Trimmers & Sink",
+        "J" to "Mixer Counter",
+        "K" to "Mixer Counter",
+        "L" to "Trimmers & Sink",
+        "M" to "Sand Blaster",
+        "N" to "Left Polishing",
+        "O" to "Right Polishing",
+        "P" to "Sink & Counter",
+        "Q" to "Sink & Steamer",
+        "R" to "Casting & Gypsum Area"
+    )
+
+    /**
+     * Calculate which area a student is responsible for on a given day
+     * @param student The student's name
+     * @param day The day of the month
+     * @return The area code (A-R) the student is assigned to
+     */
     private fun getDutyAreaForStudent(student: String, day: Int): String {
         val studentIndex = students.indexOf(student)
-        if (studentIndex == -1) return "A" // Default to area A
+        if (studentIndex == -1) return "A" // Default to area A if student not found
 
-        // Schedule pattern: each student's area cycles sequentially
-        // Student 0 (Bailasan) starts from A, student 1 (Christina) from B, etc.
+        // Calculate area based on student index and day, rotating through all areas
         val startAreaIndex = studentIndex % areas.size
         val areaIndex = (startAreaIndex + day - 1) % areas.size
         return areas[areaIndex]
     }
 
-    // Helper function to check if two calendars represent the same day
+    /**
+     * Check if two Calendar instances represent the same date
+     */
     private fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
         return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
                 cal1.get(Calendar.MONTH) == cal2.get(Calendar.MONTH) &&
                 cal1.get(Calendar.DAY_OF_MONTH) == cal2.get(Calendar.DAY_OF_MONTH)
     }
 
-    // Get avatar resource ID based on student name
+    /**
+     * Get the avatar resource ID for a given student name
+     * @param studentName The name of the student
+     * @return Resource ID of the avatar image, or default if not found
+     */
     private fun getAvatarResourceId(studentName: String): Int {
         return when (studentName.lowercase()) {
             "bailasan" -> R.drawable.avatar_bailasan
@@ -94,7 +132,7 @@ class MainActivity : ComponentActivity() {
             "wesley" -> R.drawable.avatar_wesley
             "yunjia" -> R.drawable.avatar_yunjia
             "ruby" -> R.drawable.avatar_ruby
-            else -> R.drawable.avatar_default // Default avatar
+            else -> R.drawable.avatar_default
         }
     }
 
@@ -102,7 +140,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val prefs = getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("MyPrefs", MODE_PRIVATE)
         val savedStudent = prefs.getString("student_name", null)
         val isFirstLaunch = prefs.getBoolean("is_first_launch", true)
 
@@ -110,11 +148,12 @@ class MainActivity : ComponentActivity() {
             Cohart9CleaningAppTheme {
                 var selectedStudent by remember { mutableStateOf(savedStudent) }
                 var showWelcome by remember { mutableStateOf(false) }
-                var showFirstTimeSelection by remember { mutableStateOf(isFirstLaunch && savedStudent == null) }
+                var showFirstTimeSelection by remember {
+                    mutableStateOf(isFirstLaunch && savedStudent == null)
+                }
                 var showCalendar by remember { mutableStateOf(false) }
                 var selectedDate by remember { mutableStateOf(Calendar.getInstance()) }
 
-                // Show welcome screen only on app cold start
                 LaunchedEffect(Unit) {
                     if (savedStudent != null) {
                         showWelcome = true
@@ -124,156 +163,91 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     topBar = {
                         when {
-                            showFirstTimeSelection -> {
-                                // No top bar for first time selection
-                            }
-
-                            showCalendar -> {
-                                TopAppBar(
-                                    title = {
-                                        Text(
-                                            text = "Select Date",
-                                            color = Color.White
-                                        )
-                                    },
-                                    navigationIcon = {
-                                        IconButton(onClick = { showCalendar = false }) {
-                                            Icon(
-                                                imageVector = Icons.Filled.ArrowBack,
-                                                contentDescription = "Back",
-                                                tint = Color.White
-                                            )
-                                        }
-                                    },
-                                    colors = TopAppBarDefaults.topAppBarColors(
-                                        containerColor = Color(0xFF13547A)
-                                    )
-                                )
-                            }
-
-                            selectedStudent != null && !showWelcome -> {
-                                TopAppBar(
-                                    title = {
-                                        Text(
-                                            text = "Cohart9 - ${selectedStudent}",
-                                            color = Color.White
-                                        )
-                                    },
-                                    navigationIcon = {
-                                        // Change to person icon to indicate student selection
-                                        IconButton(onClick = {
-                                            selectedStudent = null
-                                            showWelcome = false
-                                        }) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Person, // Use person icon for student selection
-                                                contentDescription = "Change Student",
-                                                tint = Color.White
-                                            )
-                                        }
-                                    },
-                                    actions = {
-                                        IconButton(onClick = {
-                                            showCalendar = true
-                                            selectedDate = Calendar.getInstance()
-                                        }) {
-                                            Icon(
-                                                imageVector = Icons.Filled.DateRange,
-                                                contentDescription = "Calendar",
-                                                tint = Color.White
-                                            )
-                                        }
-                                    },
-                                    colors = TopAppBarDefaults.topAppBarColors(
-                                        containerColor = Color(0xFF13547A)
-                                    )
-                                )
-                            }
-
-                            else -> {
-                                TopAppBar(
-                                    title = {
-                                        Text(
-                                            text = "Cohart9",
-                                            color = Color.White
-                                        )
-                                    },
-                                    colors = TopAppBarDefaults.topAppBarColors(
-                                        containerColor = Color(0xFF13547A)
-                                    )
-                                )
-                            }
+                            showFirstTimeSelection -> TopAppBar(
+                                title = { Text("Cohart9", color = Color.White) },
+                                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF13547A))
+                            )
+                            showCalendar -> TopAppBar(
+                                title = { Text("Select Date", color = Color.White) },
+                                navigationIcon = {
+                                    IconButton(onClick = { showCalendar = false }) {
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
+                                    }
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF13547A))
+                            )
+                            selectedStudent != null && !showWelcome -> TopAppBar(
+                                title = { Text("Cohart9 - $selectedStudent", color = Color.White) },
+                                navigationIcon = {
+                                    IconButton(onClick = {
+                                        selectedStudent = null
+                                        showWelcome = false
+                                    }) {
+                                        Icon(Icons.Filled.Person, "Change Student", tint = Color.White)
+                                    }
+                                },
+                                actions = {
+                                    IconButton(onClick = { showCalendar = true }) {
+                                        Icon(Icons.Filled.DateRange, "Calendar", tint = Color.White)
+                                    }
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF13547A))
+                            )
+                            else -> TopAppBar(
+                                title = { Text("Cohart9", color = Color.White) },
+                                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF13547A))
+                            )
                         }
                     }
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
                         when {
-                            showFirstTimeSelection -> {
-                                FirstTimeSelectionScreen(
-                                    students = students,
-                                    onSelect = { student ->
-                                        selectedStudent = student
-                                        prefs.edit().putString("student_name", student).apply()
-                                        prefs.edit().putBoolean("is_first_launch", false).apply()
-                                        showFirstTimeSelection = false
-                                        // Show welcome screen when first selecting student
-                                        showWelcome = true
+                            showFirstTimeSelection -> FirstTimeSelectionScreen(
+                                students = students,
+                                onSelect = { student ->
+                                    selectedStudent = student
+                                    prefs.edit {
+                                        putString("student_name", student)
+                                        putBoolean("is_first_launch", false)
                                     }
-                                )
-                            }
-
-                            showCalendar -> {
-                                CalendarScreen(
-                                    selectedDate = selectedDate,
-                                    onDateSelected = { date ->
-                                        selectedDate = date
-                                    },
-                                    onBack = { showCalendar = false },
-                                    student = selectedStudent ?: "",
-                                    getDutyAreaForStudent = { student, day ->
-                                        getDutyAreaForStudent(student, day)
-                                    }
-                                )
-                            }
-
-                            selectedStudent == null -> {
-                                StudentSelectionScreen(
-                                    students = students,
-                                    selectedStudent = null,
-                                    onSelect = { student ->
-                                        selectedStudent = student
-                                        prefs.edit().putString("student_name", student).apply()
-                                        // Do not show welcome screen when switching students
-                                    }
-                                )
-                            }
-
-                            showWelcome -> {
-                                WelcomeAnimationScreen(
-                                    student = selectedStudent!!,
-                                    onAnimationComplete = {
-                                        showWelcome = false
-                                    },
-                                    isFirstTime = isFirstLaunch
-                                )
-                            }
-
-                            else -> {
-                                DutyScreen(
-                                    student = selectedStudent!!,
-                                    onBack = {
-                                        selectedStudent = null
-                                        showWelcome = false
-                                    },
-                                    selectedDate = selectedDate,
-                                    getDutyAreaForStudent = { student, day ->
-                                        getDutyAreaForStudent(student, day)
-                                    },
-                                    isSameDay = { cal1, cal2 ->
-                                        isSameDay(cal1, cal2)
-                                    }
-                                )
-                            }
+                                    showFirstTimeSelection = false
+                                    showWelcome = true
+                                }
+                            )
+                            showCalendar -> CalendarScreen(
+                                selectedDate = selectedDate,
+                                onDateSelected = { date ->
+                                    selectedDate = date
+                                    showCalendar = false
+                                },
+                                onBack = { showCalendar = false },
+                                student = selectedStudent ?: "",
+                                getDutyAreaForStudent = ::getDutyAreaForStudent
+                            )
+                            selectedStudent == null -> StudentSelectionScreen(
+                                students = students,
+                                selectedStudent = null,
+                                onSelect = { student ->
+                                    selectedStudent = student
+                                    prefs.edit { putString("student_name", student) }
+                                    showWelcome = true  // Show welcome animation after selection
+                                }
+                            )
+                            showWelcome -> WelcomeAnimationScreen(
+                                student = selectedStudent!!,
+                                onAnimationComplete = { showWelcome = false },
+                                isFirstTime = isFirstLaunch && savedStudent == null
+                            )
+                            else -> DutyScreen(
+                                student = selectedStudent!!,
+                                onBack = {
+                                    selectedStudent = null
+                                    showWelcome = false
+                                },
+                                selectedDate = selectedDate,
+                                getDutyAreaForStudent = ::getDutyAreaForStudent,
+                                isSameDay = ::isSameDay
+                            )
                         }
                     }
                 }
@@ -281,8 +255,56 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Composable that shows a scroll indicator when content overflows
+     */
     @Composable
-    fun FirstTimeSelectionScreen(
+    private fun ScrollIndicatorBox(
+        modifier: Modifier = Modifier,
+        content: @Composable () -> Unit
+    ) {
+        val scrollState = rememberScrollState()
+        val showBottomIndicator = scrollState.canScrollForward
+
+        Box(modifier = modifier) {
+            Column(
+                modifier = Modifier.verticalScroll(scrollState).fillMaxSize()
+            ) {
+                content()
+            }
+
+            // Show gradient indicator at bottom when more content is available
+            if (showBottomIndicator) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color(0x80000000))
+                            )
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = "Scroll down for more content",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .size(32.dp)
+                            .padding(bottom = 8.dp)
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * First-time user experience screen for selecting a student
+     */
+    @Composable
+    private fun FirstTimeSelectionScreen(
         students: List<String>,
         onSelect: (String) -> Unit
     ) {
@@ -295,107 +317,74 @@ class MainActivity : ComponentActivity() {
                     )
                 )
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+            ScrollIndicatorBox(
+                modifier = Modifier.fillMaxSize().padding(24.dp)
             ) {
-                Text(
-                    text = "Welcome to Cohart9 Cleaning App",
-                    fontSize = 28.sp,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                Text(
-                    text = "Please select your name to get started",
-                    fontSize = 18.sp,
-                    color = Color(0xFFE3F2FD),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 32.dp)
-                )
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    items(students) { student ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(student) },
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFFB2DFDB)
-                            ),
-                            elevation = CardDefaults.cardElevation(12.dp),
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Image(
-                                    painter = painterResource(
-                                        id = getAvatarResourceId(student)
-                                    ),
-                                    contentDescription = "$student's avatar",
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(CircleShape)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Text(
-                                    text = student,
-                                    fontSize = 20.sp,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
+                    Text(
+                        text = "Welcome to Cohart9 Cleaning App",
+                        fontSize = 28.sp,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    Text(
+                        text = "Please select your name to get started",
+                        fontSize = 18.sp,
+                        color = Color(0xFFE3F2FD),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 32.dp)
+                    )
+
+                    // List of all students as selectable cards
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        students.forEach { student ->
+                            StudentSelectionCard(
+                                student = student,
+                                isSelected = false,
+                                onSelect = { onSelect(student) }
+                            )
                         }
                     }
-                }
 
-                Text(
-                    text = "You can change your selection later from the main screen",
-                    fontSize = 14.sp,
-                    color = Color(0xFFBBDEFB),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 24.dp)
-                )
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Text(
+                        text = "You can change your selection later from the main screen",
+                        fontSize = 14.sp,
+                        color = Color(0xFFBBDEFB),
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
             }
         }
     }
 
+    /**
+     * Welcome animation screen shown after student selection
+     */
     @Composable
-    fun WelcomeAnimationScreen(
+    private fun WelcomeAnimationScreen(
         student: String,
         onAnimationComplete: () -> Unit,
         isFirstTime: Boolean = false
     ) {
-        var alphaState by remember { mutableStateOf(0f) }
-        var scaleState by remember { mutableStateOf(0f) }
-        var progress by remember { mutableStateOf(0f) }
+        // Animation states
+        var alphaState by remember { mutableFloatStateOf(0f) }
+        var scaleState by remember { mutableFloatStateOf(0f) }
+        var progress by remember { mutableFloatStateOf(0f) }
 
-        val alphaAnim by animateFloatAsState(
-            targetValue = alphaState,
-            animationSpec = tween(durationMillis = 2500)
-        )
-        val scaleAnim by animateFloatAsState(
-            targetValue = scaleState,
-            animationSpec = tween(durationMillis = 2500)
-        )
-        val progressAnim by animateFloatAsState(
-            targetValue = progress,
-            animationSpec = tween(durationMillis = 2500)
-        )
+        // Animated values
+        val alphaAnim by animateFloatAsState(targetValue = alphaState, animationSpec = tween(2500))
+        val scaleAnim by animateFloatAsState(targetValue = scaleState, animationSpec = tween(2500))
+        val progressAnim by animateFloatAsState(targetValue = progress, animationSpec = tween(2500))
 
         Box(
             modifier = Modifier
@@ -429,51 +418,11 @@ class MainActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(40.dp))
 
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.width(200.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .background(
-                                color = Color(0x44FFFFFF),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(progressAnim)
-                                .height(8.dp)
-                                .background(
-                                    color = Color(0xFFFFA500),
-                                    shape = RoundedCornerShape(4.dp)
-                                )
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "${(progressAnim * 100).toInt()}%",
-                        fontSize = 14.sp,
-                        color = Color.White,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "Loading...",
-                        fontSize = 12.sp,
-                        color = Color(0xFFCCCCCC),
-                        fontWeight = FontWeight.Normal
-                    )
-                }
+                LoadingProgressBar(progressAnim)
             }
         }
 
+        // Start animations and navigate after completion
         LaunchedEffect(Unit) {
             alphaState = 1f
             scaleState = 1f
@@ -483,8 +432,41 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Animated progress bar for loading states
+     */
     @Composable
-    fun StudentSelectionScreen(
+    private fun LoadingProgressBar(progress: Float) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.width(200.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .background(Color(0x44FFFFFF), RoundedCornerShape(4.dp))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .height(8.dp)
+                        .background(Color(0xFFFFA500), RoundedCornerShape(4.dp))
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("${(progress * 100).toInt()}%", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Loading...", fontSize = 12.sp, color = Color(0xFFCCCCCC), fontWeight = FontWeight.Normal)
+        }
+    }
+
+    /**
+     * Screen for selecting a student from the list
+     */
+    @Composable
+    private fun StudentSelectionScreen(
         students: List<String>,
         selectedStudent: String?,
         onSelect: (String) -> Unit
@@ -498,66 +480,84 @@ class MainActivity : ComponentActivity() {
                     )
                 )
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(students) { student ->
-                    val isSelected = selectedStudent == student
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(student) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) Color(0xFFBBDEFB) else Color(0xFFB2DFDB)
-                        ),
-                        elevation = CardDefaults.cardElevation(12.dp),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Image(
-                                painter = painterResource(
-                                    id = getAvatarResourceId(student)
-                                ),
-                                contentDescription = "$student's avatar",
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                text = student,
-                                fontSize = 20.sp,
-                                color = Color.White,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
+            ScrollIndicatorBox(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                Column {
+                    students.forEach { student ->
+                        StudentSelectionCard(
+                            student = student,
+                            isSelected = selectedStudent == student,
+                            onSelect = { onSelect(student) }
+                        )
                     }
+                    Spacer(modifier = Modifier.height(32.dp))
                 }
             }
         }
     }
 
+    /**
+     * Individual student selection card with avatar and name
+     */
     @Composable
-    fun CalendarScreen(
+    private fun StudentSelectionCard(
+        student: String,
+        isSelected: Boolean,
+        onSelect: () -> Unit
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onSelect)
+                .padding(vertical = 6.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isSelected) Color(0xFFBBDEFB) else Color(0xFFB2DFDB)
+            ),
+            elevation = CardDefaults.cardElevation(12.dp),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Image(
+                    painter = painterResource(id = getAvatarResourceId(student)),
+                    contentDescription = "$student's avatar",
+                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = student,
+                    fontSize = 20.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+
+    /**
+     * Calendar screen for selecting dates and viewing duties
+     */
+    @Composable
+    private fun CalendarScreen(
         selectedDate: Calendar,
         onDateSelected: (Calendar) -> Unit,
         onBack: () -> Unit,
         student: String,
         getDutyAreaForStudent: (String, Int) -> String
     ) {
-        // Use remember to save current month and ensure state updates
         var currentMonth by remember {
-            mutableStateOf(Calendar.getInstance().apply {
-                time = selectedDate.time // Initialize with selected date
-            })
+            mutableStateOf(Calendar.getInstance().apply { time = selectedDate.time })
+        }
+
+        // Update current month when selected date changes
+        LaunchedEffect(selectedDate) {
+            if (selectedDate.get(Calendar.MONTH) != currentMonth.get(Calendar.MONTH) ||
+                selectedDate.get(Calendar.YEAR) != currentMonth.get(Calendar.YEAR)) {
+                currentMonth = Calendar.getInstance().apply { time = selectedDate.time }
+            }
         }
 
         Box(
@@ -569,262 +569,221 @@ class MainActivity : ComponentActivity() {
                     )
                 )
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-            ) {
-                // Month navigation
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = {
-                            // Create new Calendar instance to trigger recomposition
+            ScrollIndicatorBox(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                Column {
+                    MonthNavigation(
+                        currentMonth = currentMonth,
+                        onPrevious = {
                             val newMonth = currentMonth.clone() as Calendar
                             newMonth.add(Calendar.MONTH, -1)
                             currentMonth = newMonth
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.KeyboardArrowLeft,
-                            contentDescription = "Previous month",
-                            tint = Color.White
-                        )
-                    }
-
-                    Text(
-                        text = "${
-                            currentMonth.getDisplayName(
-                                Calendar.MONTH,
-                                Calendar.LONG,
-                                Locale.getDefault()
-                            )
-                        } ${currentMonth.get(Calendar.YEAR)}",
-                        fontSize = 24.sp,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    IconButton(
-                        onClick = {
-                            // Create new Calendar instance to trigger recomposition
+                        },
+                        onNext = {
                             val newMonth = currentMonth.clone() as Calendar
                             newMonth.add(Calendar.MONTH, 1)
                             currentMonth = newMonth
                         }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    WeekDayHeaders()
+                    Spacer(modifier = Modifier.height(8.dp))
+                    CalendarGrid(currentMonth, selectedDate, onDateSelected)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    DutyInformationCard(selectedDate, student, getDutyAreaForStudent)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    CalendarActionButtons(onBack, onDateSelected)
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
+            }
+        }
+    }
+
+    /**
+     * Month navigation header with previous/next buttons
+     */
+    @Composable
+    private fun MonthNavigation(
+        currentMonth: Calendar,
+        onPrevious: () -> Unit,
+        onNext: () -> Unit
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onPrevious) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month", tint = Color.White)
+            }
+
+            Text(
+                text = "${currentMonth.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault())} ${currentMonth.get(Calendar.YEAR)}",
+                fontSize = 24.sp,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
+
+            IconButton(onClick = onNext) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next month", tint = Color.White)
+            }
+        }
+    }
+
+    /**
+     * Header row showing days of the week
+     */
+    @Composable
+    private fun WeekDayHeaders() {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat").forEach { day ->
+                Text(
+                    text = day,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+
+    /**
+     * Calendar grid showing days of the month
+     */
+    @Composable
+    private fun CalendarGrid(
+        currentMonth: Calendar,
+        selectedDate: Calendar,
+        onDateSelected: (Calendar) -> Unit
+    ) {
+        val daysInMonth = currentMonth.getActualMaximum(Calendar.DAY_OF_MONTH)
+        val firstDayOfMonth = Calendar.getInstance().apply {
+            time = currentMonth.time
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        val startingDayOfWeek = firstDayOfMonth.get(Calendar.DAY_OF_WEEK)
+        val today = Calendar.getInstance()
+
+        Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+            val weeks = (daysInMonth + startingDayOfWeek - 1) / 7 + 1
+
+            Column {
+                repeat(weeks) { weekIndex ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.KeyboardArrowRight,
-                            contentDescription = "Next month",
-                            tint = Color.White
-                        )
-                    }
-                }
+                        for (dayIndex in 0..6) {
+                            val dayNumber = weekIndex * 7 + dayIndex - startingDayOfWeek + 2
+                            val isCurrentMonth = dayNumber in 1..daysInMonth
+                            val dayCalendar = Calendar.getInstance().apply {
+                                time = currentMonth.time
+                                if (isCurrentMonth) set(Calendar.DAY_OF_MONTH, dayNumber)
+                            }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                            val isToday = isCurrentMonth && isSameDay(dayCalendar, today)
+                            val isSelected = isCurrentMonth && isSameDay(dayCalendar, selectedDate)
 
-                // Day of week headers
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat").forEach { day ->
-                        Text(
-                            text = day,
-                            color = Color.White,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 14.sp,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Calendar days
-                val daysInMonth = currentMonth.getActualMaximum(Calendar.DAY_OF_MONTH)
-                val firstDayOfMonth = Calendar.getInstance().apply {
-                    time = currentMonth.time
-                    set(Calendar.DAY_OF_MONTH, 1)
-                }
-                val startingDayOfWeek = firstDayOfMonth.get(Calendar.DAY_OF_WEEK)
-                val today = Calendar.getInstance()
-
-                LazyColumn {
-                    items((daysInMonth + startingDayOfWeek - 1) / 7 + 1) { weekIndex ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            for (dayIndex in 0..6) {
-                                val dayNumber = weekIndex * 7 + dayIndex - startingDayOfWeek + 2
-                                val isCurrentMonth = dayNumber in 1..daysInMonth
-                                val dayCalendar = Calendar.getInstance().apply {
-                                    time = currentMonth.time
-                                    if (isCurrentMonth) {
-                                        set(Calendar.DAY_OF_MONTH, dayNumber)
-                                    }
-                                }
-
-                                val isToday = isCurrentMonth &&
-                                        dayCalendar.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
-                                        dayCalendar.get(Calendar.MONTH) == today.get(Calendar.MONTH) &&
-                                        dayCalendar.get(Calendar.DAY_OF_MONTH) == today.get(Calendar.DAY_OF_MONTH)
-
-                                val isSelected = isCurrentMonth &&
-                                        dayCalendar.get(Calendar.YEAR) == selectedDate.get(Calendar.YEAR) &&
-                                        dayCalendar.get(Calendar.MONTH) == selectedDate.get(Calendar.MONTH) &&
-                                        dayCalendar.get(Calendar.DAY_OF_MONTH) == selectedDate.get(
-                                    Calendar.DAY_OF_MONTH
-                                )
-
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .aspectRatio(1f)
-                                        .padding(4.dp)
-                                        .background(
-                                            color = when {
-                                                isSelected -> Color(0xFFFFA500)
-                                                isToday -> Color(0xFF64B5F6)
-                                                else -> Color.Transparent
-                                            },
-                                            shape = CircleShape
-                                        )
-                                        .clickable(isCurrentMonth) {
-                                            if (isCurrentMonth) {
-                                                onDateSelected(dayCalendar)
-                                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .padding(4.dp)
+                                    .background(
+                                        color = when {
+                                            isSelected -> Color(0xFFFFA500)
+                                            isToday -> Color(0xFF64B5F6)
+                                            else -> Color.Transparent
                                         },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isCurrentMonth) {
-                                        Text(
-                                            text = dayNumber.toString(),
-                                            color = when {
-                                                isSelected || isToday -> Color.White
-                                                else -> Color.White
-                                            },
-                                            fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    }
+                                        shape = CircleShape
+                                    )
+                                    .clickable(isCurrentMonth) {
+                                        onDateSelected(dayCalendar)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isCurrentMonth) {
+                                    Text(
+                                        text = dayNumber.toString(),
+                                        color = Color.White,
+                                        fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal
+                                    )
                                 }
                             }
                         }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Selected date duty information
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F4FD)),
-                    elevation = CardDefaults.cardElevation(8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Duty for ${selectedDate.get(Calendar.YEAR)}-${
-                                selectedDate.get(
-                                    Calendar.MONTH
-                                ) + 1
-                            }-${selectedDate.get(Calendar.DAY_OF_MONTH)}",
-                            fontSize = 18.sp,
-                            color = Color(0xFF13547A),
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        if (student.isNotEmpty()) {
-                            val dutyArea = getDutyAreaForStudent(
-                                student,
-                                selectedDate.get(Calendar.DAY_OF_MONTH)
-                            )
-
-                            val areaDescriptions = mapOf(
-                                "A" to "Clean Up Supervisor Front and Back Area. Dental Laboratory Classroom 332, 333 & 334",
-                                "B" to "Porcelain Room",
-                                "C" to "Acrylic Packing & Sink",
-                                "D" to "Printing & Sink / Counter. Boil Out & Curing Tank",
-                                "E" to "Trimmers & Sink",
-                                "F" to "Mixer Counter",
-                                "G" to "Mixer Counter",
-                                "H" to "Trimmers & Sink",
-                                "I" to "Trimmers & Sink",
-                                "J" to "Mixer Counter",
-                                "K" to "Mixer Counter",
-                                "L" to "Trimmers & Sink",
-                                "M" to "Sand Blaster",
-                                "N" to "Left Polishing",
-                                "O" to "Right Polishing",
-                                "P" to "Sink & Counter",
-                                "Q" to "Sink & Steamer",
-                                "R" to "Casting & Gypsum Area"
-                            )
-
-                            val dutyDescription = areaDescriptions[dutyArea] ?: ""
-
-                            Text(
-                                text = "$student is responsible for Area $dutyArea",
-                                fontSize = 16.sp,
-                                color = Color(0xFF1976D2)
-                            )
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Text(
-                                text = dutyDescription,
-                                fontSize = 14.sp,
-                                color = Color(0xFF666666)
-                            )
-                        } else {
-                            Text(
-                                text = "Please select a student first",
-                                fontSize = 16.sp,
-                                color = Color(0xFF666666)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Action buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Button(
-                        onClick = onBack,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
-                    ) {
-                        Text("Back to Today")
-                    }
-
-                    Button(
-                        onClick = {
-                            onBack()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFA500))
-                    ) {
-                        Text("View Selected Date")
                     }
                 }
             }
         }
     }
 
+    /**
+     * Card showing duty information for selected date
+     */
     @Composable
-    fun DutyScreen(
+    private fun DutyInformationCard(
+        selectedDate: Calendar,
+        student: String,
+        getDutyAreaForStudent: (String, Int) -> String
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F4FD)),
+            elevation = CardDefaults.cardElevation(8.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(
+                    text = "Duty for ${selectedDate.get(Calendar.YEAR)}-${selectedDate.get(Calendar.MONTH) + 1}-${selectedDate.get(Calendar.DAY_OF_MONTH)}",
+                    fontSize = 18.sp,
+                    color = Color(0xFF13547A),
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (student.isNotEmpty()) {
+                    val dutyArea = getDutyAreaForStudent(student, selectedDate.get(Calendar.DAY_OF_MONTH))
+                    val dutyDescription = areaDescriptions[dutyArea] ?: ""
+
+                    Text("$student is responsible for Area $dutyArea", fontSize = 16.sp, color = Color(0xFF1976D2))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(dutyDescription, fontSize = 14.sp, color = Color(0xFF666666))
+                } else {
+                    Text("Please select a student first", fontSize = 16.sp, color = Color(0xFF666666))
+                }
+            }
+        }
+    }
+
+    /**
+     * Action buttons for calendar screen
+     */
+    @Composable
+    private fun CalendarActionButtons(onBack: () -> Unit, onDateSelected: (Calendar) -> Unit) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Button(
+                onClick = { onDateSelected(Calendar.getInstance()); onBack() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
+            ) {
+                Text("Back to Today")
+            }
+
+            Button(
+                onClick = onBack,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFA500))
+            ) {
+                Text("Close Calendar")
+            }
+        }
+    }
+
+    /**
+     * Main duty screen showing student's cleaning assignment
+     */
+    @Composable
+    private fun DutyScreen(
         student: String,
         onBack: () -> Unit,
         selectedDate: Calendar = Calendar.getInstance(),
@@ -833,33 +792,26 @@ class MainActivity : ComponentActivity() {
     ) {
         val day = selectedDate.get(Calendar.DAY_OF_MONTH)
         val isToday = isSameDay(selectedDate, Calendar.getInstance())
-
-        // Calculate duty area based on schedule
         val dutyArea = getDutyAreaForStudent(student, day)
+        val dutyDescription = areaDescriptions[dutyArea] ?: ""
 
-        // Area description mapping
-        val areaDescriptions = mapOf(
-            "A" to "Clean Up Supervisor Front and Back Area. Dental Laboratory Classroom 332, 333 & 334",
-            "B" to "Porcelain Room",
-            "C" to "Acrylic Packing & Sink",
-            "D" to "Printing & Sink / Counter. Boil Out & Curing Tank",
-            "E" to "Trimmers & Sink",
-            "F" to "Mixer Counter",
-            "G" to "Mixer Counter",
-            "H" to "Trimmers & Sink",
-            "I" to "Trimmers & Sink",
-            "J" to "Mixer Counter",
-            "K" to "Mixer Counter",
-            "L" to "Trimmers & Sink",
-            "M" to "Sand Blaster",
-            "N" to "Left Polishing",
-            "O" to "Right Polishing",
-            "P" to "Sink & Counter",
-            "Q" to "Sink & Steamer",
-            "R" to "Casting & Gypsum Area"
+        // Animation states for entrance animation
+        var isContentVisible by remember { mutableStateOf(false) }
+        val alphaAnim by animateFloatAsState(
+            targetValue = if (isContentVisible) 1f else 0f,
+            animationSpec = tween(600, easing = LinearOutSlowInEasing)
+        )
+        val scaleAnim by animateFloatAsState(
+            targetValue = if (isContentVisible) 1f else 0.8f,
+            animationSpec = tween(500, easing = FastOutSlowInEasing)
         )
 
-        val dutyDescription = areaDescriptions[dutyArea] ?: ""
+        // Trigger entrance animation when student or date changes
+        LaunchedEffect(student, selectedDate) {
+            isContentVisible = false
+            delay(50)
+            isContentVisible = true
+        }
 
         Box(
             modifier = Modifier
@@ -870,169 +822,184 @@ class MainActivity : ComponentActivity() {
                     )
                 )
         ) {
-            Column(
+            ScrollIndicatorBox(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(16.dp)
+                    .graphicsLayer {
+                        alpha = alphaAnim
+                        scaleX = scaleAnim
+                        scaleY = scaleAnim
+                    }
             ) {
-                // Date indicator - only show when viewing non-today date
-                if (!isToday) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
-                        elevation = CardDefaults.cardElevation(4.dp)
-                    ) {
-                        Text(
-                            text = "Viewing: ${selectedDate.get(Calendar.YEAR)}-${selectedDate.get(Calendar.MONTH) + 1}-${selectedDate.get(Calendar.DAY_OF_MONTH)}",
-                            fontSize = 16.sp,
-                            color = Color(0xFFE65100),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            fontWeight = FontWeight.Medium
-                        )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Show date indicator if not viewing today
+                    if (!isToday) {
+                        DateIndicatorCard(selectedDate, alphaAnim, isContentVisible)
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
 
-                // Top information card - updated to match calendar style
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F4FD)),
-                    elevation = CardDefaults.cardElevation(8.dp),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = if (isToday) "Today ${selectedDate.get(Calendar.YEAR)}-${selectedDate.get(Calendar.MONTH) + 1}-${selectedDate.get(Calendar.DAY_OF_MONTH)}"
-                            else "Date ${selectedDate.get(Calendar.YEAR)}-${selectedDate.get(Calendar.MONTH) + 1}-${selectedDate.get(Calendar.DAY_OF_MONTH)}",
-                            fontSize = 20.sp,
-                            color = Color(0xFF13547A),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "$student is responsible for",
-                            fontSize = 20.sp,
-                            color = Color(0xFF1976D2),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "Area $dutyArea",
-                            fontSize = 24.sp,
-                            color = Color(0xFFFFA500),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = dutyDescription,
-                            fontSize = 16.sp,
-                            color = Color(0xFF666666),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                            fontWeight = FontWeight.Normal,
-                            lineHeight = 20.sp
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Custom layout Canvas - should always be displayed
-                CustomLayoutCanvas(
-                    areas = areas,
-                    highlightArea = dutyArea
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = onBack,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 32.dp)
-                ) {
-                    Text(
-                        "View Other Students' Duties",
-                        color = Color.White,
-                        fontWeight = FontWeight.Medium
-                    )
+                    DutyInfoCard(selectedDate, student, dutyArea, dutyDescription, isToday, alphaAnim, isContentVisible)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    AnimatedLayoutCanvas(dutyArea, alphaAnim, scaleAnim)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    BackButton(onBack, alphaAnim, isContentVisible)
+                    Spacer(modifier = Modifier.height(32.dp))
                 }
             }
         }
     }
 
+    /**
+     * Card showing the selected date when not viewing today
+     */
     @Composable
-    fun CustomLayoutCanvas(
-        areas: List<String>,
-        highlightArea: String
-    ) {
-        // Define irregular column layout
-        val layout = listOf(
-            listOf("A", "B"),                    // Column 1: 2 items
-            listOf("D", "D", "C", "C"),          // Column 2: 4 items
-            listOf("H", "G", "F", "E"),          // Column 3: 4 items
-            listOf("I", "J", "K", "L"),          // Column 4: 4 items
-            listOf("M", "N", "O", "P", "Q", "R"), // Column 5: 6 items
-            listOf("F", "A")                     // Column 6: 2 items
-        )
-
-        Canvas(
+    private fun DateIndicatorCard(selectedDate: Calendar, alpha: Float, isContentVisible: Boolean) {
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(480.dp)
+                .graphicsLayer {
+                    this.alpha = alpha
+                    translationY = if (isContentVisible) 0f else 20f
+                },
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+            elevation = CardDefaults.cardElevation(4.dp)
         ) {
+            Text(
+                text = "Viewing: ${selectedDate.get(Calendar.YEAR)}-${selectedDate.get(Calendar.MONTH) + 1}-${selectedDate.get(Calendar.DAY_OF_MONTH)}",
+                fontSize = 16.sp,
+                color = Color(0xFFE65100),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+
+    /**
+     * Card showing detailed duty information
+     */
+    @Composable
+    private fun DutyInfoCard(
+        selectedDate: Calendar,
+        student: String,
+        dutyArea: String,
+        dutyDescription: String,
+        isToday: Boolean,
+        alpha: Float,
+        isContentVisible: Boolean
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    this.alpha = alpha
+                    translationY = if (isContentVisible) 0f else 30f
+                },
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F4FD)),
+            elevation = CardDefaults.cardElevation(8.dp),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = if (isToday) "Today ${selectedDate.get(Calendar.YEAR)}-${selectedDate.get(Calendar.MONTH) + 1}-${selectedDate.get(Calendar.DAY_OF_MONTH)}"
+                    else "Date ${selectedDate.get(Calendar.YEAR)}-${selectedDate.get(Calendar.MONTH) + 1}-${selectedDate.get(Calendar.DAY_OF_MONTH)}",
+                    fontSize = 20.sp,
+                    color = Color(0xFF13547A),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text("$student is responsible for", fontSize = 20.sp, color = Color(0xFF1976D2), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Medium)
+                Spacer(modifier = Modifier.height(10.dp))
+                Text("Area $dutyArea", fontSize = 24.sp, color = Color(0xFFFFA500), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(dutyDescription, fontSize = 16.sp, color = Color(0xFF666666), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Normal, lineHeight = 20.sp)
+            }
+        }
+    }
+
+    /**
+     * Animated wrapper for the layout canvas
+     */
+    @Composable
+    private fun AnimatedLayoutCanvas(dutyArea: String, alpha: Float, scale: Float) {
+        Box(
+            modifier = Modifier.graphicsLayer {
+                this.alpha = alpha
+                scaleX = scale
+                scaleY = scale
+            }
+        ) {
+            CustomLayoutCanvas(areas = areas, highlightArea = dutyArea)
+        }
+    }
+
+    /**
+     * Back button to return to student selection
+     */
+    @Composable
+    private fun BackButton(onBack: () -> Unit, alpha: Float, isContentVisible: Boolean) {
+        Button(
+            onClick = onBack,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .graphicsLayer {
+                    this.alpha = alpha
+                    translationY = if (isContentVisible) 0f else 40f
+                }
+        ) {
+            Text("View Other Students' Duties", color = Color.White, fontWeight = FontWeight.Medium)
+        }
+    }
+
+    /**
+     * Custom canvas that draws the laboratory layout with highlighted area
+     */
+    @Composable
+    private fun CustomLayoutCanvas(areas: List<String>, highlightArea: String) {
+        // Layout definition for the laboratory areas
+        val layout = listOf(
+            listOf("A", "B"),
+            listOf("D", "D", "C", "C"),
+            listOf("H", "G", "F", "E"),
+            listOf("I", "J", "K", "L"),
+            listOf("M", "N", "O", "P", "Q", "R"),
+            listOf("F", "A")
+        )
+
+        Canvas(modifier = Modifier.fillMaxWidth().height(480.dp)) {
             val totalWidth = size.width
             val totalHeight = size.height
             val horizontalSpacing = 14f
             val verticalSpacing = 8f
 
-            // Base cell height
+            // Calculate cell dimensions based on screen size
             val baseCellHeight = totalHeight / 7f
+            val columnHeights = mapOf(1 to baseCellHeight, 2 to baseCellHeight * 0.8f, 3 to baseCellHeight * 0.8f, 4 to baseCellHeight)
 
-            // Set different cell heights for each column
-            val columnHeights = mapOf(
-                1 to baseCellHeight,        // Column 2: standard height
-                2 to baseCellHeight * 0.8f, // Column 3: 80% height
-                3 to baseCellHeight * 0.8f, // Column 4: 80% height
-                4 to baseCellHeight         // Column 5: standard height
-            )
-
-            // Calculate exact widths to ensure equal margins and column widths
             val totalColumns = layout.size
-            val narrowColumnsCount = 2 // Column 1 and column 6
+            val narrowColumnsCount = 2
             val standardColumnsCount = totalColumns - narrowColumnsCount
-
             val narrowWidthRatio = 0.8f
             val totalSpacing = (totalColumns - 1) * horizontalSpacing
 
-            // Calculate cell widths that will result in equal margins
             val availableWidth = totalWidth - totalSpacing
             val totalWidthRatio = (narrowColumnsCount * narrowWidthRatio) + standardColumnsCount
             val baseCellWidth = availableWidth / totalWidthRatio
             val narrowCellWidth = baseCellWidth * narrowWidthRatio
             val standardCellWidth = baseCellWidth
 
-            // Calculate exact starting positions to center the grid
             val totalGridWidth = (narrowCellWidth * 2) + (standardCellWidth * 4) + (horizontalSpacing * 5)
             val startX = (totalWidth - totalGridWidth) / 2
 
-            // Calculate column positions
+            // Calculate column starting positions
             val column1StartX = startX
             val column2StartX = column1StartX + narrowCellWidth + horizontalSpacing
             val column3StartX = column2StartX + standardCellWidth + horizontalSpacing
@@ -1040,25 +1007,20 @@ class MainActivity : ComponentActivity() {
             val column5StartX = column4StartX + standardCellWidth + horizontalSpacing
             val column6StartX = column5StartX + standardCellWidth + horizontalSpacing
 
-            // Calculate column 5 position first to determine A and B vertical positions
             val column5CellHeight = columnHeights[4] ?: baseCellHeight
             val column5TotalHeight = layout[4].size * column5CellHeight + (layout[4].size - 1) * verticalSpacing
             val column5StartY = (totalHeight - column5TotalHeight) / 2 - 35f
 
-            // Calculate positions of M and R in column 5
             val mTop = column5StartY
             val rBottom = column5StartY + column5TotalHeight
 
-            // Calculate column 1 A and B cell heights (A top aligns with M, B bottom aligns with R)
             val totalAvailableHeight = rBottom - mTop
             val column1CellHeight = (totalAvailableHeight - verticalSpacing) / 2f
 
             val aTop = mTop
             val aBottom = aTop + column1CellHeight
             val bTop = aBottom + verticalSpacing
-            val bBottom = rBottom
 
-            // Add blank horizontal rectangle above column 2
             val column2CellHeight = columnHeights[1] ?: baseCellHeight
             val column2TotalHeight = layout[1].size * column2CellHeight + (layout[1].size - 1) * verticalSpacing
             val column2StartY = (totalHeight - column2TotalHeight) / 2 - 35f
@@ -1068,7 +1030,7 @@ class MainActivity : ComponentActivity() {
             val blankRectX = column2StartX
             val blankRectY = column2StartY - blankRectHeight - verticalSpacing
 
-            // Draw blank cell - updated colors to match calendar style
+            // Draw blank cell for "Printing & Counter" area
             drawRoundRect(
                 color = Color(0xFFE3F2FD),
                 topLeft = Offset(blankRectX, blankRectY),
@@ -1076,7 +1038,6 @@ class MainActivity : ComponentActivity() {
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f)
             )
 
-            // Draw border - updated color
             drawRoundRect(
                 color = Color(0xFF90CAF9),
                 topLeft = Offset(blankRectX, blankRectY),
@@ -1085,12 +1046,12 @@ class MainActivity : ComponentActivity() {
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
             )
 
-            // Add hint text in blank cell - updated color
+            // Draw text for blank cell
             drawContext.canvas.nativeCanvas.apply {
                 val text = "Printing & Counter"
                 val paint = android.graphics.Paint().apply {
                     textAlign = android.graphics.Paint.Align.CENTER
-                    color = android.graphics.Color.parseColor("#1565C0") // Calendar blue color
+                    color = "#1565C0".toColorInt()
                     isFakeBoldText = true
                 }
 
@@ -1098,6 +1059,7 @@ class MainActivity : ComponentActivity() {
                 paint.textSize = textSize
                 var textWidth = paint.measureText(text)
 
+                // Adjust text size to fit within cell
                 while (textWidth > blankRectWidth * 0.95f && textSize > blankRectHeight * 0.2f) {
                     textSize -= 1f
                     paint.textSize = textSize
@@ -1109,22 +1071,12 @@ class MainActivity : ComponentActivity() {
                 drawText(text, x, y, paint)
             }
 
-            // Draw column 1 A and B cells with updated colors
-            listOf(
-                Pair("A", aTop to column1CellHeight),
-                Pair("B", bTop to column1CellHeight)
-            ).forEach { (areaChar, position) ->
+            // Draw column 1 cells (A and B)
+            listOf(Pair("A", aTop to column1CellHeight), Pair("B", bTop to column1CellHeight)).forEach { (areaChar, position) ->
                 val (top, height) = position
-                val actualAreaIndex = areas.indexOf(areaChar).takeIf { it >= 0 } ?: return@forEach
-                val area = areas[actualAreaIndex]
+                val area = areas.find { it == areaChar } ?: return@forEach
                 val left = column1StartX
-
-                // Updated cell colors to match calendar style
-                val cellColor = if (area == highlightArea) {
-                    Color(0xFFFFA500) // Highlight color remains orange
-                } else {
-                    Color(0xFF64B5F6) // Changed to calendar blue color
-                }
+                val cellColor = if (area == highlightArea) Color(0xFFFFA500) else Color(0xFF64B5F6)
 
                 drawRoundRect(
                     color = cellColor,
@@ -1133,6 +1085,7 @@ class MainActivity : ComponentActivity() {
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
                 )
 
+                // Draw area label
                 drawContext.canvas.nativeCanvas.apply {
                     val paint = android.graphics.Paint().apply {
                         textAlign = android.graphics.Paint.Align.CENTER
@@ -1146,21 +1099,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Calculate cell R width
-            val rWidth = column5StartX + standardCellWidth - column3StartX
-            val rHeight = baseCellHeight * 0.7f
-
-            // Define column positions for drawing - both column 1 and 6 use the same narrow width
+            // Define column positions and widths
             val columnPositions = listOf(
-                column1StartX to narrowCellWidth, // Column 1: narrow width
-                column2StartX to standardCellWidth, // Column 2: standard width
-                column3StartX to standardCellWidth, // Column 3: standard width
-                column4StartX to standardCellWidth, // Column 4: standard width
-                column5StartX to standardCellWidth, // Column 5: standard width
-                column6StartX to narrowCellWidth   // Column 6: same narrow width as column 1
+                column1StartX to narrowCellWidth,
+                column2StartX to standardCellWidth,
+                column3StartX to standardCellWidth,
+                column4StartX to standardCellWidth,
+                column5StartX to standardCellWidth,
+                column6StartX to narrowCellWidth
             )
 
-            // Draw other columns with updated colors
+            // Draw all other columns
             for (colIndex in 1 until layout.size) {
                 val columnAreas = layout[colIndex]
                 val (columnStartX, baseColumnWidth) = columnPositions[colIndex]
@@ -1170,52 +1119,46 @@ class MainActivity : ComponentActivity() {
                 val startY = (totalHeight - columnTotalHeight) / 2 - 35f
 
                 for ((rowIndex, areaChar) in columnAreas.withIndex()) {
-                    val actualAreaIndex = areas.indexOf(areaChar).takeIf { it >= 0 } ?: continue
-                    val area = areas[actualAreaIndex]
+                    val area = areas.find { it == areaChar } ?: continue
 
                     var top = startY + rowIndex * (cellHeight + verticalSpacing)
                     var left = columnStartX
                     var currentCellWidth = baseColumnWidth
                     var currentCellHeight = cellHeight
 
-                    // Special handling for column 5 cell R
+                    // Special handling for area R
                     val isCellR = colIndex == 4 && rowIndex == columnAreas.size - 1 && area == "R"
                     if (isCellR) {
-                        currentCellWidth = rWidth
-                        currentCellHeight = rHeight
+                        currentCellWidth = column5StartX + standardCellWidth - column3StartX
+                        currentCellHeight = baseCellHeight * 0.7f
                         left = column3StartX
                         top = rBottom - currentCellHeight
                     }
 
-                    // For column 6, use the full narrow width for both cells
                     val isColumn6 = colIndex == 5
                     val isBlankArea = isColumn6 && areaChar == "F"
-                    val isColumn6CellA = isColumn6 && areaChar == "A"
-
-                    // Check if this is cell D (in column 2, first row)
-                    val isCellD = colIndex == 1 && rowIndex == 0 && areaChar == "D"
 
                     if (isBlankArea) {
-                        // Draw blank faculty cell using full narrow width - updated colors
+                        // Draw blank faculty area
                         drawRoundRect(
-                            color = Color(0xFFE3F2FD), // Calendar light blue
+                            color = Color(0xFFE3F2FD),
                             topLeft = Offset(left, top),
                             size = Size(currentCellWidth, currentCellHeight),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
                         )
                         drawRoundRect(
-                            color = Color(0xFF90CAF9), // Calendar border blue
+                            color = Color(0xFF90CAF9),
                             topLeft = Offset(left, top),
                             size = Size(currentCellWidth, currentCellHeight),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
                         )
-                        drawContext.canvas.nativeCanvas.apply {
-                            save()
+                        // Draw rotated text for faculty area
+                        drawContext.canvas.nativeCanvas.withSave {
                             val text = "Faculty"
                             val paint = android.graphics.Paint().apply {
                                 textAlign = android.graphics.Paint.Align.CENTER
-                                color = android.graphics.Color.parseColor("#1565C0") // Calendar blue
+                                color = "#1565C0".toColorInt()
                                 isFakeBoldText = true
                             }
                             var textSize = currentCellWidth * 0.4f
@@ -1232,47 +1175,28 @@ class MainActivity : ComponentActivity() {
                             val x = centerX
                             val y = centerY + textSize / 3
                             drawText(text, x, y, paint)
-                            restore()
                         }
                     } else {
-                        // Updated cell colors to match calendar style
-                        val cellColor = if (area == highlightArea) {
-                            Color(0xFFFFA500) // Highlight color remains orange
-                        } else {
-                            Color(0xFF64B5F6) // Changed to calendar blue color
-                        }
-
-                        // Draw normal area using the column's base width
+                        // Draw regular area cell
+                        val cellColor = if (area == highlightArea) Color(0xFFFFA500) else Color(0xFF64B5F6)
                         drawRoundRect(
                             color = cellColor,
                             topLeft = Offset(left, top),
                             size = Size(currentCellWidth, currentCellHeight),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
                         )
+                        // Draw area label
                         drawContext.canvas.nativeCanvas.apply {
                             val paint = android.graphics.Paint().apply {
                                 textAlign = android.graphics.Paint.Align.CENTER
                                 color = android.graphics.Color.WHITE
                                 isFakeBoldText = true
                             }
-
-                            // Calculate text size based on cell type
                             val textSize = when {
-                                isColumn6CellA -> {
-                                    // Column 6 cell A: match column 1 text size
-                                    currentCellHeight * 0.2f
-                                }
-                                isCellR -> {
-                                    // Cell R: match cell D text size (column 2 uses standard cell height)
-                                    val column2CellHeight = columnHeights[1] ?: baseCellHeight
-                                    column2CellHeight * 0.25f
-                                }
-                                else -> {
-                                    // Other cells: use original text size
-                                    currentCellHeight * 0.25f
-                                }
+                                isColumn6 && areaChar == "A" -> currentCellHeight * 0.2f
+                                isCellR -> (columnHeights[1] ?: baseCellHeight) * 0.25f
+                                else -> currentCellHeight * 0.25f
                             }
-
                             paint.textSize = textSize
                             val x = left + currentCellWidth / 2
                             val y = top + currentCellHeight / 2 + paint.textSize / 3
