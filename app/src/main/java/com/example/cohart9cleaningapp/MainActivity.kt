@@ -153,9 +153,11 @@ class MainActivity : ComponentActivity() {
                 }
                 var showCalendar by remember { mutableStateOf(false) }
                 var selectedDate by remember { mutableStateOf(Calendar.getInstance()) }
+                var isSwitchingStudent by remember { mutableStateOf(false) }
 
                 LaunchedEffect(Unit) {
-                    if (savedStudent != null) {
+                    if (savedStudent != null && !isFirstLaunch) {
+                        // Show welcome back only on app startup, not when switching students
                         showWelcome = true
                     }
                 }
@@ -180,8 +182,10 @@ class MainActivity : ComponentActivity() {
                                 title = { Text("Cohart9 - $selectedStudent", color = Color.White) },
                                 navigationIcon = {
                                     IconButton(onClick = {
+                                        // When clicking the person icon to switch students
                                         selectedStudent = null
                                         showWelcome = false
+                                        isSwitchingStudent = true
                                     }) {
                                         Icon(Icons.Filled.Person, "Change Student", tint = Color.White)
                                     }
@@ -230,19 +234,32 @@ class MainActivity : ComponentActivity() {
                                 onSelect = { student ->
                                     selectedStudent = student
                                     prefs.edit { putString("student_name", student) }
-                                    showWelcome = true  // Show welcome animation after selection
+
+                                    if (isSwitchingStudent) {
+                                        // Show switched message when changing students
+                                        showWelcome = true
+                                    } else if (isFirstLaunch) {
+                                        // Show welcome only on first launch
+                                        showWelcome = true
+                                    }
+                                    // For returning users, don't show welcome when selecting from main screen
                                 }
                             )
                             showWelcome -> WelcomeAnimationScreen(
                                 student = selectedStudent!!,
-                                onAnimationComplete = { showWelcome = false },
-                                isFirstTime = isFirstLaunch && savedStudent == null
+                                onAnimationComplete = {
+                                    showWelcome = false
+                                    isSwitchingStudent = false
+                                },
+                                isFirstTime = isFirstLaunch && savedStudent == null,
+                                isSwitching = isSwitchingStudent
                             )
                             else -> DutyScreen(
                                 student = selectedStudent!!,
                                 onBack = {
                                     selectedStudent = null
                                     showWelcome = false
+                                    isSwitchingStudent = true
                                 },
                                 selectedDate = selectedDate,
                                 getDutyAreaForStudent = ::getDutyAreaForStudent,
@@ -374,17 +391,30 @@ class MainActivity : ComponentActivity() {
     private fun WelcomeAnimationScreen(
         student: String,
         onAnimationComplete: () -> Unit,
-        isFirstTime: Boolean = false
+        isFirstTime: Boolean = false,
+        isSwitching: Boolean = false
     ) {
         // Animation states
         var alphaState by remember { mutableFloatStateOf(0f) }
         var scaleState by remember { mutableFloatStateOf(0f) }
         var progress by remember { mutableFloatStateOf(0f) }
 
+        // Use shorter duration for switching students
+        val animationDuration = if (isSwitching) 1500 else 2500
+
         // Animated values
-        val alphaAnim by animateFloatAsState(targetValue = alphaState, animationSpec = tween(2500))
-        val scaleAnim by animateFloatAsState(targetValue = scaleState, animationSpec = tween(2500))
-        val progressAnim by animateFloatAsState(targetValue = progress, animationSpec = tween(2500))
+        val alphaAnim by animateFloatAsState(
+            targetValue = alphaState,
+            animationSpec = tween(animationDuration)
+        )
+        val scaleAnim by animateFloatAsState(
+            targetValue = scaleState,
+            animationSpec = tween(animationDuration)
+        )
+        val progressAnim by animateFloatAsState(
+            targetValue = progress,
+            animationSpec = tween(animationDuration)
+        )
 
         Box(
             modifier = Modifier
@@ -403,7 +433,11 @@ class MainActivity : ComponentActivity() {
                     .graphicsLayer(scaleX = scaleAnim, scaleY = scaleAnim)
             ) {
                 Text(
-                    text = if (isFirstTime) "Welcome," else "Welcome back,",
+                    text = when {
+                        isSwitching -> "Switched to"
+                        isFirstTime -> "Welcome,"
+                        else -> "Welcome back,"
+                    },
                     fontSize = 32.sp,
                     color = Color.White,
                     textAlign = TextAlign.Center
@@ -427,7 +461,7 @@ class MainActivity : ComponentActivity() {
             alphaState = 1f
             scaleState = 1f
             progress = 1f
-            delay(2500)
+            delay(animationDuration.toLong())
             onAnimationComplete()
         }
     }
@@ -482,6 +516,17 @@ class MainActivity : ComponentActivity() {
         ) {
             ScrollIndicatorBox(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                 Column {
+                    Text(
+                        text = "Select Student",
+                        fontSize = 24.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        textAlign = TextAlign.Center
+                    )
+
                     students.forEach { student ->
                         StudentSelectionCard(
                             student = student,
@@ -982,7 +1027,7 @@ class MainActivity : ComponentActivity() {
 
             // Calculate cell dimensions based on screen size
             val baseCellHeight = totalHeight / 7f
-            val columnHeights = mapOf(1 to baseCellHeight, 2 to baseCellHeight * 0.8f, 3 to baseCellHeight * 0.8f, 4 to baseCellHeight)
+            val columnHeights = mapOf(1 to baseCellHeight * 0.8f, 2 to baseCellHeight * 0.8f, 3 to baseCellHeight * 0.8f, 4 to baseCellHeight)
 
             val totalColumns = layout.size
             val narrowColumnsCount = 2
