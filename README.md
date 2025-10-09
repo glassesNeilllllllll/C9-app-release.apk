@@ -7,9 +7,9 @@ This Android app is designed to provide Cohort 9 students with a more convenient
 ### Latest Version: v1.0.0
 
 **Download the latest APK:**
-[📱 Cohart9_Cleaning_v1.0.0.apk](https://github.com/glassesNeillllllllll/C9-app-release.apk/releases/download/v1.0.0/Cohart9_Cleaning_v1.0.0.apk)
+[📱 Cohart9_Cleaning_v1.0.0.apk](https://github.com/glassesNeilllllllll/C9-app-release.apk/releases/download/v1.0.0/Cohart9_Cleaning_v1.0.0.apk)
 
-Or visit the [Releases page](https://github.com/glassesNeillllllllll/C9-app-release.apk/releases) to download all available versions.
+Or visit the [Releases page](https://github.com/glassesNeilllllllll/C9-app-release.apk/releases) to download all available versions.
 
 ## 🛠 Installation Guide
 
