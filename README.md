@@ -1,18 +1,49 @@
-This app designed to provide Cohort 9 students with a more convenient display of daily laboratory cleaning areas.
+# Cohart9 Cleaning App
 
-Click the "Releases" section on the right-hand side to enter the download page and download the latest version of "app-release.apk" for installation,
-or download the latest version directly from this link:
-https://github.com/glassesNeillllllllll/C9-app-release.apk/releases/download/v1.0.0/app-release.apk
+This Android app is designed to provide Cohort 9 students with a more convenient way to view daily laboratory cleaning areas.
 
+## 📥 Download & Installation
 
-If you encounter an issue with app installation, please try the following settings on your Android device:
+### Latest Version: v1.0.0
 
-1） Setting --> Applications and Permissions --> Permission management --> Install unknown apps --> download management --> Allow unknown apps to be installed
+**Download the latest APK:**
+[📱 Cohart9_Cleaning_v1.0.0.apk](https://github.com/glassesNeilllllllll/C9-app-release.apk/releases/download/v1.0.0/Cohart9_Cleaning_v1.0.0.apk)
 
-2） Google Play Account --> Play Protect --> Settings --> Scan apps with Play Protect (off) and Improve harmful app detection (off)
+Or visit the [Releases page](https://github.com/glassesNeilllllllll/C9-app-release.apk/releases) to download all available versions.
 
-Turn those settings back after the app is installed.
+## 🛠 Installation Guide
 
+If you encounter issues installing the app, please configure your Android device as follows:
 
+### Method 1: Enable Unknown Sources
+1. Go to **Settings** → **Apps & notifications** → **Special app access** → **Install unknown apps**
+2. Select your browser or file manager app
+3. Enable **"Allow from this source"**
 
-This app may release updated versions in the future.
+### Method 2: Disable Play Protect (Temporarily)
+1. Open **Google Play Store** → **Play Protect**
+2. Go to **Settings** (gear icon)
+3. Turn off:
+   - **"Scan apps with Play Protect"**
+   - **"Improve harmful app detection"**
+
+> ⚠️ **Note:** Remember to turn these security settings back on after installation is complete.
+
+## 🎯 Features
+- Daily cleaning area assignments for all Cohort 9 students
+- Interactive laboratory layout visualization
+- Calendar integration for date selection
+- Student profile management
+- Automatic rotation through 18 cleaning areas (A-R)
+
+## 🔄 Updates
+This app may release updated versions in the future. Check the [Releases page](https://github.com/glassesNeillllllllll/C9-app-release.apk/releases) periodically for updates.
+
+## 📱 Compatibility
+- **Minimum Android Version:** 7.0 (API 24)
+- **Target Android Version:** 12 (API 31)
+- **File Size:** ~5-10 MB
+
+---
+
+**For support or issues, please contact the developer.**
